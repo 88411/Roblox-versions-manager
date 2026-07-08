@@ -1,0 +1,153 @@
+[2026-07-07 17:09:44] Log started: C:\Users\19169\Documents\force versiob\dist\logs\run_20260707_170944.log
+[2026-07-07 17:09:50] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:09:50] Fetching manifest: https://setup-aws.rbxcdn.com/version-8884371d30284041-rbxPkgManifest.txt
+[2026-07-07 17:09:50] Manifest loaded successfully: text/plain
+[2026-07-07 17:09:50] Manifest contains 21 package(s).
+[2026-07-07 17:09:50] Using cached package: RobloxApp.zip
+[2026-07-07 17:09:51] Using cached package: content-avatar.zip
+[2026-07-07 17:09:51] Using cached package: content-configs.zip
+[2026-07-07 17:09:51] Using cached package: content-fonts.zip
+[2026-07-07 17:09:51] Using cached package: content-models.zip
+[2026-07-07 17:09:51] Using cached package: content-sky.zip
+[2026-07-07 17:09:51] Using cached package: content-sounds.zip
+[2026-07-07 17:09:51] Using cached package: shaders.zip
+[2026-07-07 17:09:51] Using cached package: ssl.zip
+[2026-07-07 17:09:51] Using cached package: content-textures2.zip
+[2026-07-07 17:09:53] Using cached package: content-textures3.zip
+[2026-07-07 17:09:53] Using cached package: content-terrain.zip
+[2026-07-07 17:09:53] Using cached package: content-platform-fonts.zip
+[2026-07-07 17:09:53] Using cached package: content-platform-dictionaries.zip
+[2026-07-07 17:09:53] Using cached package: extracontent-places.zip
+[2026-07-07 17:09:53] Using cached package: extracontent-luapackages.zip
+[2026-07-07 17:09:53] Using cached package: extracontent-translations.zip
+[2026-07-07 17:09:53] Using cached package: extracontent-models.zip
+[2026-07-07 17:09:53] Using cached package: extracontent-textures.zip
+[2026-07-07 17:09:54] Using cached package: WebView2.zip
+[2026-07-07 17:09:54] Using cached package: WebView2RuntimeInstaller.zip
+[2026-07-07 17:09:54] Copying files into the active Roblox folder...
+[2026-07-07 17:09:57] Error: [WinError 32] The process cannot access the file because it is being used by another process
+[2026-07-07 17:10:30] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:10:30] Fetching manifest: https://setup-aws.rbxcdn.com/version-8884371d30284041-rbxPkgManifest.txt
+[2026-07-07 17:10:30] Manifest loaded successfully: text/plain
+[2026-07-07 17:10:30] Manifest contains 21 package(s).
+[2026-07-07 17:10:30] Using cached package: RobloxApp.zip
+[2026-07-07 17:10:31] Using cached package: content-avatar.zip
+[2026-07-07 17:10:31] Using cached package: content-configs.zip
+[2026-07-07 17:10:31] Using cached package: content-fonts.zip
+[2026-07-07 17:10:31] Using cached package: content-models.zip
+[2026-07-07 17:10:31] Using cached package: content-sky.zip
+[2026-07-07 17:10:31] Using cached package: content-sounds.zip
+[2026-07-07 17:10:31] Using cached package: shaders.zip
+[2026-07-07 17:10:31] Using cached package: ssl.zip
+[2026-07-07 17:10:31] Using cached package: content-textures2.zip
+[2026-07-07 17:10:34] Using cached package: content-textures3.zip
+[2026-07-07 17:10:34] Using cached package: content-terrain.zip
+[2026-07-07 17:10:34] Using cached package: content-platform-fonts.zip
+[2026-07-07 17:10:35] Using cached package: content-platform-dictionaries.zip
+[2026-07-07 17:10:35] Using cached package: extracontent-places.zip
+[2026-07-07 17:10:35] Using cached package: extracontent-luapackages.zip
+[2026-07-07 17:10:35] Using cached package: extracontent-translations.zip
+[2026-07-07 17:10:35] Using cached package: extracontent-models.zip
+[2026-07-07 17:10:35] Using cached package: extracontent-textures.zip
+[2026-07-07 17:10:35] Using cached package: WebView2.zip
+[2026-07-07 17:10:35] Using cached package: WebView2RuntimeInstaller.zip
+[2026-07-07 17:10:35] Copying files into the active Roblox folder...
+[2026-07-07 17:10:40] No old version folders needed cleanup.
+[2026-07-07 17:10:43] Applied version-8884371d30284041; shortcut updated.
+[2026-07-07 17:12:09] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:12:09] Fetching manifest: https://setup-aws.rbxcdn.com/version-90f2fddd3b244ff6-rbxPkgManifest.txt
+[2026-07-07 17:12:10] Manifest loaded successfully: text/plain
+[2026-07-07 17:12:10] Manifest contains 21 package(s).
+[2026-07-07 17:12:10] Downloading package 1/21: RobloxApp.zip
+[2026-07-07 17:12:10] Response type: application/zip
+[2026-07-07 17:12:12] Saved RobloxApp.zip (132763631 bytes)
+[2026-07-07 17:12:13] Downloading package 2/21: content-avatar.zip
+[2026-07-07 17:12:13] Response type: application/zip
+[2026-07-07 17:12:13] Saved content-avatar.zip (309309 bytes)
+[2026-07-07 17:12:14] Downloading package 3/21: content-configs.zip
+[2026-07-07 17:12:14] Response type: application/zip
+[2026-07-07 17:12:14] Saved content-configs.zip (329884 bytes)
+[2026-07-07 17:12:15] Downloading package 4/21: content-fonts.zip
+[2026-07-07 17:12:15] Response type: application/zip
+[2026-07-07 17:12:15] Saved content-fonts.zip (5944830 bytes)
+[2026-07-07 17:12:15] Downloading package 5/21: content-models.zip
+[2026-07-07 17:12:16] Response type: application/zip
+[2026-07-07 17:12:16] Saved content-models.zip (612430 bytes)
+[2026-07-07 17:12:16] Downloading package 6/21: content-sky.zip
+[2026-07-07 17:12:16] Response type: application/zip
+[2026-07-07 17:12:16] Saved content-sky.zip (2448711 bytes)
+[2026-07-07 17:12:16] Downloading package 7/21: content-sounds.zip
+[2026-07-07 17:12:17] Response type: application/zip
+[2026-07-07 17:12:17] Saved content-sounds.zip (470471 bytes)
+[2026-07-07 17:12:17] Downloading package 8/21: shaders.zip
+[2026-07-07 17:12:17] Response type: application/zip
+[2026-07-07 17:12:17] Saved shaders.zip (10558800 bytes)
+[2026-07-07 17:12:18] Downloading package 9/21: ssl.zip
+[2026-07-07 17:12:18] Response type: application/zip
+[2026-07-07 17:12:18] Saved ssl.zip (130569 bytes)
+[2026-07-07 17:12:18] Downloading package 10/21: content-textures2.zip
+[2026-07-07 17:12:18] Response type: application/zip
+[2026-07-07 17:12:19] Saved content-textures2.zip (5733975 bytes)
+[2026-07-07 17:12:21] Downloading package 11/21: content-textures3.zip
+[2026-07-07 17:12:21] Response type: application/zip
+[2026-07-07 17:12:22] Saved content-textures3.zip (3716441 bytes)
+[2026-07-07 17:12:22] Downloading package 12/21: content-terrain.zip
+[2026-07-07 17:12:22] Response type: application/zip
+[2026-07-07 17:12:22] Saved content-terrain.zip (3227 bytes)
+[2026-07-07 17:12:22] Downloading package 13/21: content-platform-fonts.zip
+[2026-07-07 17:12:22] Response type: application/zip
+[2026-07-07 17:12:23] Saved content-platform-fonts.zip (13686751 bytes)
+[2026-07-07 17:12:23] Downloading package 14/21: content-platform-dictionaries.zip
+[2026-07-07 17:12:23] Response type: application/zip
+[2026-07-07 17:12:23] Saved content-platform-dictionaries.zip (373448 bytes)
+[2026-07-07 17:12:23] Downloading package 15/21: extracontent-places.zip
+[2026-07-07 17:12:24] Response type: application/zip
+[2026-07-07 17:12:24] Saved extracontent-places.zip (808136 bytes)
+[2026-07-07 17:12:24] Downloading package 16/21: extracontent-luapackages.zip
+[2026-07-07 17:12:24] Response type: application/zip
+[2026-07-07 17:12:24] Saved extracontent-luapackages.zip (2573346 bytes)
+[2026-07-07 17:12:24] Downloading package 17/21: extracontent-translations.zip
+[2026-07-07 17:12:25] Response type: application/zip
+[2026-07-07 17:12:25] Saved extracontent-translations.zip (610717 bytes)
+[2026-07-07 17:12:25] Downloading package 18/21: extracontent-models.zip
+[2026-07-07 17:12:25] Response type: application/zip
+[2026-07-07 17:12:26] Saved extracontent-models.zip (21818707 bytes)
+[2026-07-07 17:12:26] Downloading package 19/21: extracontent-textures.zip
+[2026-07-07 17:12:26] Response type: application/zip
+[2026-07-07 17:12:26] Saved extracontent-textures.zip (6968743 bytes)
+[2026-07-07 17:12:27] Downloading package 20/21: WebView2.zip
+[2026-07-07 17:12:28] Response type: application/zip
+[2026-07-07 17:12:28] Saved WebView2.zip (83405 bytes)
+[2026-07-07 17:12:28] Downloading package 21/21: WebView2RuntimeInstaller.zip
+[2026-07-07 17:12:28] Response type: application/zip
+[2026-07-07 17:12:28] Saved WebView2RuntimeInstaller.zip (1532149 bytes)
+[2026-07-07 17:12:28] Copying files into the active Roblox folder...
+[2026-07-07 17:12:30] Error: [WinError 32] The process cannot access the file because it is being used by another process
+[2026-07-07 17:12:37] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:12:37] Fetching manifest: https://setup-aws.rbxcdn.com/version-90f2fddd3b244ff6-rbxPkgManifest.txt
+[2026-07-07 17:12:38] Manifest loaded successfully: text/plain
+[2026-07-07 17:12:38] Manifest contains 21 package(s).
+[2026-07-07 17:12:38] Using cached package: RobloxApp.zip
+[2026-07-07 17:12:38] Using cached package: content-avatar.zip
+[2026-07-07 17:12:39] Using cached package: content-configs.zip
+[2026-07-07 17:12:39] Using cached package: content-fonts.zip
+[2026-07-07 17:12:39] Using cached package: content-models.zip
+[2026-07-07 17:12:39] Using cached package: content-sky.zip
+[2026-07-07 17:12:39] Using cached package: content-sounds.zip
+[2026-07-07 17:12:39] Using cached package: shaders.zip
+[2026-07-07 17:12:39] Using cached package: ssl.zip
+[2026-07-07 17:12:39] Using cached package: content-textures2.zip
+[2026-07-07 17:12:41] Using cached package: content-textures3.zip
+[2026-07-07 17:12:41] Using cached package: content-terrain.zip
+[2026-07-07 17:12:41] Using cached package: content-platform-fonts.zip
+[2026-07-07 17:12:42] Using cached package: content-platform-dictionaries.zip
+[2026-07-07 17:12:42] Using cached package: extracontent-places.zip
+[2026-07-07 17:12:42] Using cached package: extracontent-luapackages.zip
+[2026-07-07 17:12:42] Using cached package: extracontent-translations.zip
+[2026-07-07 17:12:42] Using cached package: extracontent-models.zip
+[2026-07-07 17:12:42] Using cached package: extracontent-textures.zip
+[2026-07-07 17:12:42] Using cached package: WebView2.zip
+[2026-07-07 17:12:42] Using cached package: WebView2RuntimeInstaller.zip
+[2026-07-07 17:12:42] Copying files into the active Roblox folder...
+[2026-07-07 17:12:45] Error: [WinError 32] The process cannot access the file because it is being used by another process
+[2026-07-07 17:14:39] Application closed.

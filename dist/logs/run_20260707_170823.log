@@ -1,0 +1,67 @@
+[2026-07-07 17:08:23] Log started: C:\Users\19169\Documents\force versiob\dist\logs\run_20260707_170823.log
+[2026-07-07 17:08:34] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:08:34] Fetching manifest: https://setup-aws.rbxcdn.com/version-8884371d30284041-rbxPkgManifest.txt
+[2026-07-07 17:08:34] Manifest loaded successfully: text/plain
+[2026-07-07 17:08:34] Manifest contains 21 package(s).
+[2026-07-07 17:08:34] Using cached package: RobloxApp.zip
+[2026-07-07 17:08:35] Using cached package: content-avatar.zip
+[2026-07-07 17:08:35] Downloading package 3/21: content-configs.zip
+[2026-07-07 17:08:35] Response type: application/zip
+[2026-07-07 17:08:35] Saved content-configs.zip (327605 bytes)
+[2026-07-07 17:08:36] Downloading package 4/21: content-fonts.zip
+[2026-07-07 17:08:36] Response type: application/zip
+[2026-07-07 17:08:36] Saved content-fonts.zip (5944830 bytes)
+[2026-07-07 17:08:37] Downloading package 5/21: content-models.zip
+[2026-07-07 17:08:37] Response type: application/zip
+[2026-07-07 17:08:37] Saved content-models.zip (612430 bytes)
+[2026-07-07 17:08:37] Downloading package 6/21: content-sky.zip
+[2026-07-07 17:08:38] Response type: application/zip
+[2026-07-07 17:08:38] Saved content-sky.zip (2448711 bytes)
+[2026-07-07 17:08:38] Downloading package 7/21: content-sounds.zip
+[2026-07-07 17:08:38] Response type: application/zip
+[2026-07-07 17:08:38] Saved content-sounds.zip (470471 bytes)
+[2026-07-07 17:08:38] Downloading package 8/21: shaders.zip
+[2026-07-07 17:08:39] Response type: application/zip
+[2026-07-07 17:08:39] Saved shaders.zip (10493714 bytes)
+[2026-07-07 17:08:39] Downloading package 9/21: ssl.zip
+[2026-07-07 17:08:40] Response type: application/zip
+[2026-07-07 17:08:40] Saved ssl.zip (130569 bytes)
+[2026-07-07 17:08:40] Downloading package 10/21: content-textures2.zip
+[2026-07-07 17:08:40] Response type: application/zip
+[2026-07-07 17:08:40] Saved content-textures2.zip (5138856 bytes)
+[2026-07-07 17:08:42] Downloading package 11/21: content-textures3.zip
+[2026-07-07 17:08:42] Response type: application/zip
+[2026-07-07 17:08:42] Saved content-textures3.zip (3716441 bytes)
+[2026-07-07 17:08:42] Downloading package 12/21: content-terrain.zip
+[2026-07-07 17:08:43] Response type: application/zip
+[2026-07-07 17:08:43] Saved content-terrain.zip (3227 bytes)
+[2026-07-07 17:08:43] Downloading package 13/21: content-platform-fonts.zip
+[2026-07-07 17:08:43] Response type: application/zip
+[2026-07-07 17:08:43] Saved content-platform-fonts.zip (13686751 bytes)
+[2026-07-07 17:08:44] Downloading package 14/21: content-platform-dictionaries.zip
+[2026-07-07 17:08:44] Response type: application/zip
+[2026-07-07 17:08:44] Saved content-platform-dictionaries.zip (362212 bytes)
+[2026-07-07 17:08:44] Downloading package 15/21: extracontent-places.zip
+[2026-07-07 17:08:44] Response type: application/zip
+[2026-07-07 17:08:44] Saved extracontent-places.zip (798740 bytes)
+[2026-07-07 17:08:44] Downloading package 16/21: extracontent-luapackages.zip
+[2026-07-07 17:08:45] Response type: application/zip
+[2026-07-07 17:08:46] Saved extracontent-luapackages.zip (2566291 bytes)
+[2026-07-07 17:08:46] Downloading package 17/21: extracontent-translations.zip
+[2026-07-07 17:08:46] Response type: application/zip
+[2026-07-07 17:08:46] Saved extracontent-translations.zip (610593 bytes)
+[2026-07-07 17:08:46] Downloading package 18/21: extracontent-models.zip
+[2026-07-07 17:08:46] Response type: application/zip
+[2026-07-07 17:08:47] Saved extracontent-models.zip (21107130 bytes)
+[2026-07-07 17:08:47] Downloading package 19/21: extracontent-textures.zip
+[2026-07-07 17:08:47] Response type: application/zip
+[2026-07-07 17:08:48] Saved extracontent-textures.zip (7118818 bytes)
+[2026-07-07 17:08:49] Downloading package 20/21: WebView2.zip
+[2026-07-07 17:08:49] Response type: application/zip
+[2026-07-07 17:08:49] Saved WebView2.zip (83405 bytes)
+[2026-07-07 17:08:49] Downloading package 21/21: WebView2RuntimeInstaller.zip
+[2026-07-07 17:08:49] Response type: application/zip
+[2026-07-07 17:08:50] Saved WebView2RuntimeInstaller.zip (1532149 bytes)
+[2026-07-07 17:08:50] Copying files into the active Roblox folder...
+[2026-07-07 17:08:53] Error: [WinError 32] The process cannot access the file because it is being used by another process
+[2026-07-07 17:09:08] Application closed.

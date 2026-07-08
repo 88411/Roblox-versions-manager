@@ -1,0 +1,13 @@
+[2026-07-07 17:03:56] Log started: C:\Users\19169\Documents\force versiob\dist\logs\run_20260707_170356.log
+[2026-07-07 17:04:04] Using newest local folder: version-90f2fddd3b244ff6
+[2026-07-07 17:04:04] Fetching manifest: https://setup-aws.rbxcdn.com/version-8884371d30284041-rbxPkgManifest.txt
+[2026-07-07 17:04:04] Manifest loaded successfully: text/plain
+[2026-07-07 17:04:04] Manifest contains 21 package(s).
+[2026-07-07 17:04:04] Downloading package 1/21: RobloxApp.zip
+[2026-07-07 17:04:05] Response type: application/zip
+[2026-07-07 17:04:07] Saved RobloxApp.zip (131813590 bytes)
+[2026-07-07 17:04:07] Downloading package 2/21: content-avatar.zip
+[2026-07-07 17:04:08] Response type: application/zip
+[2026-07-07 17:04:08] Saved content-avatar.zip (309309 bytes)
+[2026-07-07 17:04:09] Error: Unsafe path in zip archive: /
+[2026-07-07 17:08:07] Application closed.
