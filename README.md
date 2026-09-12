@@ -1,9 +1,12 @@
 # Roblox Version Manager
 
-A Windows GUI for syncing a selected Roblox `WindowsPlayer` build to the newest local Roblox version folder. It uses WEAO's live product catalog to choose the requested build for a product.
+A tool that allows you to quickly manage roblox verions.
+Allows you to quickly and easily sync your roblox version with cheats from the WEAO api.
 
-The app reads Roblox deployment history from:
+Allows you to quickly launch different roblox versions for different cheats.
+<img width="1073" height="780" alt="image" src="https://github.com/user-attachments/assets/95b6b559-0601-493c-b017-54a091d9aad7" />
 
+<<<<<<< HEAD
 ```text
 https://setup-rbxcdn.github.io/DeployHistory.txt
 ```
@@ -93,3 +96,6 @@ Each run writes a timestamped log file to `logs\` next to the script or executab
 ## Safety Notes
 
 The cleanup step only removes direct child folders inside `%LOCALAPPDATA%\Roblox\Versions` whose names start with `version-`. It refuses to operate on folders that do not look like the Roblox Versions directory.
+=======
+For quick version hotswapping, in settings enable Auto Cache favorites, which keeps a copy of all of the versions across all of your favorited cheats, meaning using the system tray you can click launch for a specific cheat and RVM will automatically apply the cached version to roblox instantly without requiring a download.
+>>>>>>> 58894c948242b47a7d8ff41f740cbf8c36311f96
