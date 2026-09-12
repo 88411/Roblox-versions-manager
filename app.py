@@ -6,6 +6,8 @@ import os
 import queue
 import re
 import shutil
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -15,7 +17,6 @@ import webbrowser
 from datetime import datetime
 from tkinter import filedialog
 import tkinter.messagebox as messagebox
-from tkinter import simpledialog
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,13 +32,22 @@ try:
 except ModuleNotFoundError:
     requests = None
 
+try:
+    import pystray
+    from PIL import Image
+except ModuleNotFoundError:
+    pystray = None
+    Image = None
+
 
 APP_NAME = "Roblox Version Manager"
 RBXCDN_HOST = "https://setup-aws.rbxcdn.com"
 DEPLOY_HISTORY_URL = "https://setup-rbxcdn.github.io/DeployHistory.txt"
 WEAO_API_BASE_URLS = (
-    "https://weao.gg",
     "https://weao.xyz",
+    "https://weao.gg",
+    "https://whatexpsare.online",
+    "https://whatexploitsare.online",
 )
 WEAO_HEADERS = {
     "Accept": "application/json",
@@ -100,16 +110,16 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_sync": False,
     "start_minimized": False,
     "start_background_sync": False,
+    "background_tray": False,
     "relaunch_after_auto_sync": False,
     "preserve_versions": True,
     "retained_versions": DEFAULT_RETAINED_VERSIONS,
-    "safe_mode": False,
-    "backup_before_sync": False,
     "favorites": [],
     "saved_profiles": [],
     "selected_product_id": "",
-    "sort_mode": "Recommended",
+    "sort_mode": "Type",
     "product_filter": "All products",
+    "auto_cache_favorites": False,
 }
 
 
@@ -137,14 +147,11 @@ class WEAOProduct:
     version: str
     rbx_version: str
     updated_at: str
-    update_status: bool
-    detected: bool
     hidden: bool
     platform: str
     extype: str
     website_url: str
     discord_url: str
-    cost: str
     free: bool
     decompiler: bool
     multi_inject: bool
@@ -166,31 +173,23 @@ class WEAOProduct:
     def build_label(self) -> str:
         return f"version-{self.version_hash}"
 
-    @property
-    def status_label(self) -> str:
-        if self.detected:
-            return "DETECTED"
-        if not self.update_status:
-            return "OUTDATED"
-        return "COMPATIBLE"
-
-    @property
-    def status_color(self) -> str:
-        if self.detected:
-            return "#f0a45b"
-        if not self.update_status:
-            return "#f06b78"
-        return "#3bea57"
-
-
 def product_sort_key(product: WEAOProduct, sort_mode: str) -> tuple[Any, ...]:
-    if sort_mode == "Name":
-        return (product.title.lower(), product.version.lower())
+    if sort_mode == "Type":
+        return (product.extype.lower(), product.title.lower())
     if sort_mode == "sUNC":
         return (-(product.sunc_percentage or -1), product.title.lower())
     if sort_mode == "Updated":
         return (product.updated_at, product.title.lower())
-    return (not product.update_status, product.detected, product.index, product.title.lower())
+    return (product.index, product.title.lower())
+
+
+def product_type_label(product: WEAOProduct) -> str:
+    raw_type = product.extype.casefold()
+    if "external" in raw_type:
+        return "External"
+    if "executor" in raw_type:
+        return "Executor"
+    return product.extype or "Product"
 
 
 def normalize_version_hash(value: str) -> str:
@@ -365,12 +364,6 @@ def default_app_data_dir() -> Path:
     return path
 
 
-def backup_versions_dir() -> Path:
-    path = default_app_data_dir() / "backups"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
 def settings_path() -> Path:
     return default_app_data_dir() / SETTINGS_FILENAME
 
@@ -406,9 +399,13 @@ def normalize_settings(settings: dict[str, Any]) -> dict[str, Any]:
         normalized["retained_versions"] = DEFAULT_RETAINED_VERSIONS
     normalized["favorites"] = [str(value) for value in normalized.get("favorites", []) if value is not None]
     normalized["auto_sync"] = bool(normalized.get("auto_sync"))
-    normalized["safe_mode"] = bool(normalized.get("safe_mode"))
     normalized["preserve_versions"] = bool(normalized.get("preserve_versions", True))
-    normalized["backup_before_sync"] = bool(normalized.get("backup_before_sync"))
+    normalized["auto_cache_favorites"] = bool(normalized.get("auto_cache_favorites"))
+    normalized["background_tray"] = bool(
+        normalized.get("background_tray") or normalized["auto_cache_favorites"]
+    )
+    normalized.pop("safe_mode", None)
+    normalized.pop("backup_before_sync", None)
     return normalized
 
 
@@ -457,11 +454,80 @@ def save_product_cache(payload: list[dict[str, Any]]) -> None:
     temp_path.replace(path)
 
 
-def backup_version_folder(folder: Path, log: Callable[[str], None]) -> Path:
-    destination = backup_versions_dir() / f"{folder.name}_{timestamp_slug()}"
-    shutil.copytree(folder, destination)
-    log(f"Saved rollback copy: {destination.name}")
-    return destination
+def roblox_user_state_paths(versions_dir: Path, active_dir: Path) -> list[tuple[Path, Path]]:
+    """Return Roblox user-state files and directories that must survive a client update."""
+    root = versions_dir.parent
+    paths: list[tuple[Path, Path]] = []
+    for candidate in root.glob("GlobalBasicSettings*.xml"):
+        if candidate.is_file():
+            paths.append((candidate, Path("local_root") / candidate.name))
+    for relative in (Path("LocalStorage"), Path("ClientSettings")):
+        candidate = root / relative
+        if candidate.exists():
+            paths.append((candidate, Path("local_root") / relative))
+    appdata_root = os.getenv("APPDATA")
+    if appdata_root:
+        appdata_roblox = Path(appdata_root) / "Roblox"
+        for relative in (Path("LocalStorage"), Path("ClientSettings")):
+            candidate = appdata_roblox / relative
+            if candidate.exists():
+                paths.append((candidate, Path("appdata") / relative))
+    for relative in (Path("ClientSettings"), Path("AppSettings.xml"), Path("LocalStorage")):
+        candidate = active_dir / relative
+        if candidate.exists():
+            paths.append((candidate, Path("active") / relative))
+    return paths
+
+
+def snapshot_roblox_user_state(
+    versions_dir: Path,
+    active_dir: Path,
+    snapshot_dir: Path,
+    log: Callable[[str], None],
+) -> list[tuple[Path, Path, str, Path]]:
+    snapshots: list[tuple[Path, Path, str, Path]] = []
+    for source, relative in roblox_user_state_paths(versions_dir, active_dir):
+        destination = snapshot_dir / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, destination)
+        else:
+            shutil.copy2(source, destination)
+        snapshots.append((source, destination, str(relative.parts[0]), Path(*relative.parts[1:])))
+    if snapshots:
+        log(f"Preserved {len(snapshots)} Roblox user-state item(s) during sync.")
+    return snapshots
+
+
+def restore_roblox_user_state(
+    snapshots: list[tuple[Path, Path, str, Path]],
+    versions_dir: Path,
+    final_dir: Path,
+    log: Callable[[str], None],
+) -> None:
+    for _original, snapshot, location, relative in snapshots:
+        if location == "local_root":
+            destination = versions_dir.parent / relative
+        elif location == "appdata":
+            appdata_root = os.getenv("APPDATA")
+            if not appdata_root:
+                continue
+            destination = Path(appdata_root) / "Roblox" / relative
+        else:
+            destination = final_dir / relative
+        if destination.exists() and destination.is_dir() and snapshot.is_file():
+            shutil.rmtree(destination)
+        elif destination.exists() and destination.is_file() and snapshot.is_dir():
+            destination.unlink()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if snapshot.is_dir():
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(snapshot, destination)
+        else:
+            shutil.copy2(snapshot, destination)
+    if snapshots:
+        log("Restored Roblox user-state after sync.")
 
 
 def parse_deploy_history(text: str, limit: int = MAX_DROPDOWN_ITEMS) -> list[RobloxVersion]:
@@ -511,14 +577,11 @@ def parse_weao_product(payload: dict[str, Any], index: int) -> WEAOProduct | Non
         version=str(payload.get("version") or "Unknown version"),
         rbx_version=rbx_version,
         updated_at=str(payload.get("updatedDate") or ""),
-        update_status=bool(payload.get("updateStatus", False)),
-        detected=bool(payload.get("detected", False)),
         hidden=bool(payload.get("hidden", False)),
         platform=str(payload.get("platform") or "Windows"),
         extype=str(payload.get("extype") or ""),
         website_url=str(payload.get("websitelink") or ""),
         discord_url=str(payload.get("discordlink") or ""),
-        cost=str(payload.get("cost") or ("Free" if payload.get("free") else "")),
         free=bool(payload.get("free", False)),
         decompiler=bool(payload.get("decompiler", False)),
         multi_inject=bool(payload.get("multiInject", False)),
@@ -534,6 +597,7 @@ def fetch_weao_products() -> list[WEAOProduct]:
     if requests is None:
         raise VersionManagerError("requests is not installed. Run: pip install -r requirements.txt")
     last_error = "unknown error"
+    errors: list[str] = []
     for base_url in WEAO_API_BASE_URLS:
         try:
             response = requests.get(
@@ -543,10 +607,12 @@ def fetch_weao_products() -> list[WEAOProduct]:
             )
             if response.status_code >= 400:
                 last_error = f"HTTP {response.status_code}"
+                errors.append(f"{base_url}: {last_error}")
                 continue
             payload = response.json()
             if not isinstance(payload, list):
                 last_error = "unexpected response format"
+                errors.append(f"{base_url}: {last_error}")
                 continue
             products = [
                 product
@@ -555,14 +621,19 @@ def fetch_weao_products() -> list[WEAOProduct]:
                 for product in [parse_weao_product(item, index)]
                 if product is not None and not product.hidden
             ]
-            products.sort(key=lambda product: (not product.update_status, product.index, product.title.lower()))
+            products.sort(key=lambda product: (product.index, product.title.lower()))
             if not products:
                 raise VersionManagerError("WEAO returned no visible Windows products with valid Roblox builds.")
             save_product_cache(payload)
             return products
-        except (requests.RequestException, ValueError, VersionManagerError) as exc:
+        except (requests.RequestException, ValueError, VersionManagerError, ssl.SSLError, socket.error) as exc:
             last_error = str(exc)
-    raise VersionManagerError(f"Could not load WEAO products ({last_error}).")
+            errors.append(f"{base_url}: {last_error}")
+    detail = "; ".join(errors[-3:]) if errors else last_error
+    raise VersionManagerError(
+        "Could not load WEAO products. Check your internet connection, VPN/proxy, or antivirus HTTPS inspection. "
+        f"Tried {len(WEAO_API_BASE_URLS)} WEAO endpoints. ({detail})"
+    )
 
 
 def fetch_weao_products_with_cache() -> tuple[list[WEAOProduct], bool]:
@@ -588,7 +659,7 @@ def fetch_weao_current_windows() -> str | None:
             value = payload.get("Windows") if isinstance(payload, dict) else None
             if value:
                 return normalize_version_hash(str(value))
-        except (requests.RequestException, ValueError, VersionManagerError):
+        except (requests.RequestException, ValueError, VersionManagerError, ssl.SSLError, socket.error):
             continue
     return None
 
@@ -757,35 +828,6 @@ def open_app_background() -> None:
         return
     app = App()
     app.mainloop()
-
-
-def rollback_to_folder(versions_dir: Path, target_dir: Path, log: Callable[[str], None]) -> Path:
-    ensure_safe_versions_dir(versions_dir)
-    if not target_dir.is_dir():
-        backup_candidate = backup_versions_dir() / target_dir.name
-        if backup_candidate.is_dir():
-            target_dir = backup_candidate
-        else:
-            raise VersionManagerError("That saved Roblox version folder is no longer available.")
-    updater_name = Path(sys.executable).name if getattr(sys, "frozen", False) else Path(__file__).name
-    close_running_roblox_processes(log, wait_seconds=15, exclude_names={updater_name})
-    current_dir = find_latest_version_folder(versions_dir)
-    if target_dir.parent.resolve() != versions_dir.resolve():
-        restored_dir = versions_dir / target_dir.name.split("_")[0]
-        if restored_dir.exists():
-            shutil.rmtree(restored_dir)
-        shutil.copytree(target_dir, restored_dir)
-        target_dir = restored_dir
-    if current_dir is not None and current_dir.resolve() == target_dir.resolve():
-        os.utime(target_dir, None)
-        return target_dir
-    backup_dir = versions_dir / f"rvm-backup-{timestamp_slug()}"
-    if current_dir is not None:
-        current_dir.rename(backup_dir)
-    os.utime(target_dir, None)
-    log(f"Moved active folder to rollback backup: {backup_dir.name}")
-    log(f"Restored saved Roblox version: {target_dir.name}")
-    return target_dir
 
 
 def build_version_path(version: RobloxVersion, channel: str = DEFAULT_CHANNEL) -> str:
@@ -977,7 +1019,6 @@ def install_version(
     progress: Callable[[float], None],
     preserve_versions: bool = True,
     retained_versions: int = DEFAULT_RETAINED_VERSIONS,
-    backup_before_sync: bool = False,
 ) -> Path:
     ensure_safe_versions_dir(versions_dir)
     updater_name = Path(sys.executable).name if getattr(sys, "frozen", False) else Path(__file__).name
@@ -993,36 +1034,37 @@ def install_version(
         log(f"Created Roblox version folder: {active_dir.name}")
     else:
         log(f"Using newest local folder: {active_dir.name}")
-        if backup_before_sync:
-            backup_version_folder(active_dir, log)
+    state_dir = Path(tempfile.mkdtemp(prefix="rvm_user_state_"))
+    try:
+        snapshots = snapshot_roblox_user_state(versions_dir, active_dir, state_dir, log)
+        with tempfile.TemporaryDirectory(prefix="rvm_extract_") as temp_name:
+            extract_dir = Path(temp_name)
+            stage_windows_player_deployment(version, cache_dir, extract_dir, log, progress)
+            log("Copying files into the active Roblox folder...")
+            copy_with_retry(extract_dir, active_dir, log, retries=1)
+            progress(0.9)
 
-    with tempfile.TemporaryDirectory(prefix="rvm_extract_") as temp_name:
-        extract_dir = Path(temp_name)
-        stage_windows_player_deployment(version, cache_dir, extract_dir, log, progress)
-        log("Copying files into the active Roblox folder...")
-        copy_with_retry(extract_dir, active_dir, log, retries=1)
-        progress(0.9)
+        target_dir = versions_dir / version.folder_name
+        if target_dir.resolve() != active_dir.resolve() and target_dir.exists():
+            if target_dir.is_dir() and target_dir.resolve().parent == versions_dir.resolve():
+                shutil.rmtree(target_dir)
+                log(f"Removed existing target folder: {target_dir.name}")
+            else:
+                raise VersionManagerError(f"Cannot replace existing path: {target_dir}")
 
-    target_dir = versions_dir / version.folder_name
-    if target_dir.resolve() != active_dir.resolve() and target_dir.exists():
-        if target_dir.is_dir() and target_dir.resolve().parent == versions_dir.resolve():
-            shutil.rmtree(target_dir)
-            log(f"Removed existing target folder: {target_dir.name}")
-        else:
-            raise VersionManagerError(
-                f"Cannot replace existing path: {target_dir}"
-            )
-
-    final_dir = rename_active_folder(active_dir, version.folder_name)
-    safe_remove_old_versions(
-        versions_dir,
-        final_dir,
-        log,
-        preserve=preserve_versions,
-        retained_versions=retained_versions,
-    )
-    progress(1.0)
-    return final_dir
+        final_dir = rename_active_folder(active_dir, version.folder_name)
+        restore_roblox_user_state(snapshots, versions_dir, final_dir, log)
+        safe_remove_old_versions(
+            versions_dir,
+            final_dir,
+            log,
+            preserve=preserve_versions,
+            retained_versions=retained_versions,
+        )
+        progress(1.0)
+        return final_dir
+    finally:
+        shutil.rmtree(state_dir, ignore_errors=True)
 
 
 def get_desktop_dir() -> Path:
@@ -1090,8 +1132,8 @@ class App(ctk.CTk if ctk is not None else object):
         ctk.set_default_color_theme("blue")
 
         self.title(APP_NAME)
-        self.geometry("980x700")
-        self.minsize(800, 600)
+        self.geometry("1080x760")
+        self.minsize(860, 620)
         self.resizable(True, True)
         icon_path = resource_path(ICON_FILENAME)
         if icon_path.exists():
@@ -1121,9 +1163,8 @@ class App(ctk.CTk if ctk is not None else object):
         self.latest_text = ctk.StringVar(value="Latest tracked build: checking...")
         self.product_count_text = ctk.StringVar(value="Loading WEAO products..." if not self.products else "")
         self.product_title_text = ctk.StringVar(value="Select a product")
-        self.product_version_text = ctk.StringVar(value="WEAO compatibility profile")
+        self.product_version_text = ctk.StringVar(value="Product profile")
         self.product_build_text = ctk.StringVar(value="Choose a product to see its target Roblox build.")
-        self.product_status_text = ctk.StringVar(value="WAITING")
         self.product_meta_text = ctk.StringVar(value="")
         self.product_features_text = ctk.StringVar(value="")
         self.weao_current_text = ctk.StringVar(value="WEAO current build: checking...")
@@ -1137,6 +1178,10 @@ class App(ctk.CTk if ctk is not None else object):
         self.auto_sync_in_progress = False
         self._last_auto_sync_hash: str | None = None
         self.product_refresh_started = False
+        self.favorite_cache_thread: threading.Thread | None = None
+        self.favorite_cache_stop = threading.Event()
+        self.tray_icon: Any = None
+        self.tray_thread: threading.Thread | None = None
 
         self.build_ui()
         self.refresh_local_status()
@@ -1149,8 +1194,14 @@ class App(ctk.CTk if ctk is not None else object):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         if self.settings.get("start_minimized") or BACKGROUND_MODE:
             self.after(250, self.withdraw)
+        if self.settings.get("background_tray"):
+            self.after(250, self.withdraw)
         if self.settings.get("auto_sync"):
             self.start_auto_sync_monitor()
+        if self.settings.get("auto_cache_favorites"):
+            self.start_favorite_cache_monitor()
+        if self.settings.get("background_tray") or BACKGROUND_MODE:
+            self.start_tray_icon()
         if self.settings.get("auto_sync") and BACKGROUND_MODE:
             self.status_text.set("Background auto-sync active")
 
@@ -1199,7 +1250,7 @@ class App(ctk.CTk if ctk is not None else object):
 
         subtitle = ctk.CTkLabel(
             self,
-            text="Choose a tracked product, inspect its compatibility, and sync the matching Windows build.",
+            text="Choose a product, review its build details, and launch or sync the matching Roblox version.",
             text_color="#8d98a6",
             font=ctk.CTkFont(size=12),
         )
@@ -1264,28 +1315,28 @@ class App(ctk.CTk if ctk is not None else object):
         filter_row.grid_columnconfigure(1, weight=1)
         self.product_filter = ctk.CTkOptionMenu(
             filter_row,
-            values=["All products", "Compatible only", "Favorites only"],
+        values=["All products", "Favorites only"],
             command=lambda value: self.filter_changed(value),
             height=30,
             corner_radius=8,
             dynamic_resizing=False,
         )
         filter_value = str(self.settings.get("product_filter") or "All products")
-        if filter_value not in {"All products", "Compatible only", "Favorites only"}:
+        if filter_value not in {"All products", "Favorites only"}:
             filter_value = "All products"
         self.product_filter.set(filter_value)
         self.product_filter.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.sort_menu = ctk.CTkOptionMenu(
             filter_row,
-            values=["Recommended", "Name", "Updated", "sUNC"],
+            values=["Type", "Updated", "sUNC"],
             command=lambda value: self.sort_changed(value),
             height=30,
             corner_radius=8,
             dynamic_resizing=False,
         )
-        sort_value = str(self.settings.get("sort_mode") or "Recommended")
-        if sort_value not in {"Recommended", "Name", "Updated", "sUNC"}:
-            sort_value = "Recommended"
+        sort_value = str(self.settings.get("sort_mode") or "Type")
+        if sort_value not in {"Type", "Updated", "sUNC"}:
+            sort_value = "Type"
         self.sort_menu.set(sort_value)
         self.sort_menu.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
@@ -1312,13 +1363,52 @@ class App(ctk.CTk if ctk is not None else object):
             anchor="w",
             font=ctk.CTkFont(size=11, weight="bold"),
         ).grid(row=0, column=0, sticky="ew", padx=24, pady=(22, 4))
+        title_row = ctk.CTkFrame(detail_panel, fg_color="transparent")
+        title_row.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 3))
+        title_row.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            detail_panel,
+            title_row,
             textvariable=self.product_title_text,
             anchor="w",
             text_color="#f4f7fb",
-            font=ctk.CTkFont(size=26, weight="bold"),
-        ).grid(row=1, column=0, sticky="ew", padx=24, pady=(0, 2))
+            font=ctk.CTkFont(size=23, weight="bold"),
+        ).grid(row=0, column=0, sticky="ew", padx=(4, 8))
+        self.website_button = ctk.CTkButton(
+            title_row,
+            text="Site",
+            command=lambda: self.open_product_link("website"),
+            width=48,
+            height=23,
+            corner_radius=7,
+            fg_color="#27313d",
+            hover_color="#344252",
+            font=ctk.CTkFont(size=10),
+        )
+        self.website_button.grid(row=0, column=1, padx=(0, 4))
+        self.discord_button = ctk.CTkButton(
+            title_row,
+            text="Discord",
+            command=lambda: self.open_product_link("discord"),
+            width=66,
+            height=23,
+            corner_radius=7,
+            fg_color="#27313d",
+            hover_color="#344252",
+            font=ctk.CTkFont(size=10),
+        )
+        self.discord_button.grid(row=0, column=2, padx=4)
+        self.favorite_button = ctk.CTkButton(
+            title_row,
+            text="Fav",
+            command=self.toggle_favorite,
+            width=43,
+            height=23,
+            corner_radius=7,
+            fg_color="#27313d",
+            hover_color="#344252",
+            font=ctk.CTkFont(size=10),
+        )
+        self.favorite_button.grid(row=0, column=3, padx=(4, 0))
         ctk.CTkLabel(
             detail_panel,
             textvariable=self.product_version_text,
@@ -1328,7 +1418,7 @@ class App(ctk.CTk if ctk is not None else object):
         ).grid(row=2, column=0, sticky="ew", padx=24, pady=(0, 12))
 
         build_card = ctk.CTkFrame(detail_panel, corner_radius=12, fg_color="#10161d")
-        build_card.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
+        build_card.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 12))
         build_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             build_card,
@@ -1344,41 +1434,27 @@ class App(ctk.CTk if ctk is not None else object):
             text_color="#e9eff5",
             font=ctk.CTkFont(size=15, weight="bold"),
         ).grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
-
-        status_row = ctk.CTkFrame(detail_panel, fg_color="transparent")
-        status_row.grid(row=4, column=0, sticky="ew", padx=24, pady=(0, 8))
-        status_row.grid_columnconfigure(1, weight=1)
-        self.product_status_label = ctk.CTkLabel(
-            status_row,
-            textvariable=self.product_status_text,
-            text_color="#0d1117",
-            fg_color="#596575",
-            corner_radius=7,
-            font=ctk.CTkFont(size=10, weight="bold"),
-            padx=9,
-            pady=4,
-        )
-        self.product_status_label.grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(
-            status_row,
+            build_card,
             textvariable=self.product_meta_text,
             anchor="w",
-            text_color="#8d98a6",
-            font=ctk.CTkFont(size=11),
-        ).grid(row=0, column=1, sticky="ew", padx=(10, 0))
+            text_color="#748293",
+            font=ctk.CTkFont(size=10),
+        ).grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 11))
 
         description_frame = ctk.CTkFrame(detail_panel, fg_color="transparent")
         description_frame.grid(row=5, column=0, sticky="nsew", padx=20, pady=(0, 8))
         description_frame.grid_columnconfigure(0, weight=1)
         description_frame.grid_rowconfigure(1, weight=1)
-        ctk.CTkLabel(
+        self.product_features_label = ctk.CTkLabel(
             description_frame,
             textvariable=self.product_features_text,
             anchor="w",
             wraplength=520,
             text_color="#c0cad5",
             font=ctk.CTkFont(size=11),
-        ).grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 9))
+        )
+        self.product_features_label.grid(row=0, column=0, sticky="ew", padx=4, pady=(0, 9))
         self.product_description = ctk.CTkTextbox(
             description_frame,
             height=150,
@@ -1392,44 +1468,10 @@ class App(ctk.CTk if ctk is not None else object):
         self.product_description.grid(row=1, column=0, sticky="nsew")
         self.product_description.configure(state="disabled")
 
-        links_row = ctk.CTkFrame(detail_panel, fg_color="transparent")
-        links_row.grid(row=6, column=0, sticky="ew", padx=20, pady=(0, 12))
-        links_row.grid_columnconfigure(0, weight=1)
-        links_row.grid_columnconfigure(1, weight=1)
-        self.website_button = ctk.CTkButton(
-            links_row,
-            text="Product site",
-            command=lambda: self.open_product_link("website"),
-            height=32,
-            corner_radius=8,
-            fg_color="#27313d",
-            hover_color="#344252",
-        )
-        self.website_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-        self.discord_button = ctk.CTkButton(
-            links_row,
-            text="Community",
-            command=lambda: self.open_product_link("discord"),
-            height=32,
-            corner_radius=8,
-            fg_color="#27313d",
-            hover_color="#344252",
-        )
-        self.discord_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
-        self.favorite_button = ctk.CTkButton(
-            links_row,
-            text="Favorite",
-            command=self.toggle_favorite,
-            height=32,
-            corner_radius=8,
-            fg_color="#27313d",
-            hover_color="#344252",
-        )
-        self.favorite_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-
         action_row = ctk.CTkFrame(detail_panel, fg_color="transparent")
-        action_row.grid(row=7, column=0, sticky="ew", padx=20, pady=(0, 20))
+        action_row.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 10))
         action_row.grid_columnconfigure(0, weight=1)
+        action_row.grid_columnconfigure(1, weight=1)
         self.sync_product_button = ctk.CTkButton(
             action_row,
             text="Sync selected product",
@@ -1438,20 +1480,18 @@ class App(ctk.CTk if ctk is not None else object):
             corner_radius=10,
             font=ctk.CTkFont(size=13, weight="bold"),
         )
-        self.sync_product_button.grid(row=0, column=0, sticky="ew")
-
-        self.rollback_button = ctk.CTkButton(
+        self.sync_product_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.launch_product_button = ctk.CTkButton(
             action_row,
-            text="Rollback saved version",
-            command=self.rollback_clicked,
-            height=35,
-            corner_radius=9,
-            fg_color="transparent",
-            border_width=1,
-            border_color="#2b3745",
-            hover_color="#202b37",
+            text="Launch selected",
+            command=self.launch_selected_product_clicked,
+            height=43,
+            corner_radius=10,
+            fg_color="#27313d",
+            hover_color="#344252",
+            font=ctk.CTkFont(size=12, weight="bold"),
         )
-        self.rollback_button.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        self.launch_product_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         manual_panel = ctk.CTkFrame(self, corner_radius=13, fg_color="#151b23", border_width=1, border_color="#222c38")
         manual_panel.grid(row=3, column=0, sticky="ew", padx=22, pady=(14, 0))
@@ -1641,12 +1681,9 @@ class App(ctk.CTk if ctk is not None else object):
         self.settings["selected_product_id"] = product.product_id
         save_settings(self.settings)
         self.product_title_text.set(product.title)
-        self.product_version_text.set(f"Product version {product.version}  /  {product.platform}  /  {product.extype or 'product'}")
+        self.product_version_text.set(f"{product_type_label(product)}  /  version {product.version}  /  {product.platform}")
         self.product_build_text.set(f"{product.build_label}  |  Roblox {product.rbx_version}")
-        self.product_status_text.set(product.status_label)
-        self.product_status_label.configure(fg_color=product.status_color)
-        meta = [part for part in [product.cost, f"Updated {product.updated_at}"] if part]
-        self.product_meta_text.set("  |  ".join(meta))
+        self.product_meta_text.set(f"Last updated  {product.updated_at}")
         features = []
         if product.sunc_percentage is not None:
             features.append(f"sUNC {product.sunc_percentage}%")
@@ -1658,7 +1695,9 @@ class App(ctk.CTk if ctk is not None else object):
             features.append("Multi-instance")
         if product.element_certified:
             features.append("Element certified")
-        self.product_features_text.set("  /  ".join(features) if features else "No feature data published by WEAO.")
+        type_label = product_type_label(product)
+        feature_text = "  /  ".join(features) if features else "No feature data published by WEAO."
+        self.product_features_text.set(f"FEATURES\n{feature_text}")
         self.set_description(product.description)
         favorites = {str(value) for value in self.settings.get("favorites", [])}
         self.favorite_button.configure(text="Unfavorite" if product.product_id in favorites else "Favorite")
@@ -1678,11 +1717,9 @@ class App(ctk.CTk if ctk is not None else object):
             product
             for product in self.products
             if (not query or query in product.title.lower() or query in product.version.lower())
-            and (product_filter != "Compatible only" or (product.update_status and not product.detected))
-            and (not self.settings.get("safe_mode") or (product.update_status and not product.detected))
             and (product_filter != "Favorites only" or product.product_id in favorites)
         ]
-        visible_products.sort(key=lambda product: product_sort_key(product, str(self.settings.get("sort_mode") or "Recommended")))
+        visible_products.sort(key=lambda product: product_sort_key(product, str(self.settings.get("sort_mode") or "Type")))
         if self.loading_products and not self.products:
             self.product_count_text.set("Loading WEAO products...")
         else:
@@ -1698,21 +1735,48 @@ class App(ctk.CTk if ctk is not None else object):
         for index, product in enumerate(visible_products):
             selected = product.product_id == self.selected_product_id
             favorite_marker = " *" if product.product_id in favorites else ""
-            card = ctk.CTkButton(
+            card = ctk.CTkFrame(
                 self.products_frame,
-                text=f"{product.status_label}  |  {product.title}{favorite_marker}\n{product.version}  |  {product.build_label}",
-                command=lambda item=product: self.select_product(item),
-                anchor="w",
-                height=64,
+                height=74,
                 corner_radius=10,
                 fg_color="#263b2b" if selected else "#18212b",
-                hover_color="#304b38" if selected else "#22303d",
                 border_width=1,
-                border_color=product.status_color if selected else "#202c38",
-                text_color="#edf3f7",
-                font=ctk.CTkFont(size=11, weight="bold"),
+            border_color="#3bea57" if selected else "#202c38",
             )
             card.grid(row=index, column=0, sticky="ew", padx=3, pady=(0, 7))
+            card.grid_propagate(False)
+            card.grid_columnconfigure(0, weight=1)
+            card.grid_columnconfigure(1, weight=0)
+            card.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
+            title = ctk.CTkLabel(
+                card,
+                text=f"{product.title}{favorite_marker}",
+                anchor="w",
+                text_color="#edf3f7",
+                font=ctk.CTkFont(size=12, weight="bold"),
+            )
+            title.grid(row=0, column=0, sticky="ew", padx=(12, 4), pady=(8, 0))
+            title.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
+            type_label = product_type_label(product)
+            subtitle = ctk.CTkLabel(
+                card,
+                text=f"version {product.version}  /  {product.build_label}",
+                anchor="w",
+                text_color="#8f9baa",
+                font=ctk.CTkFont(size=10),
+            )
+            subtitle.grid(row=1, column=0, sticky="ew", padx=(12, 4), pady=(0, 8))
+            subtitle.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
+            status = ctk.CTkLabel(
+                card,
+                text=type_label,
+                text_color="#8f9baa",
+                width=84,
+                anchor="e",
+                font=ctk.CTkFont(size=9, weight="bold"),
+            )
+            status.grid(row=0, column=1, rowspan=2, padx=(4, 12))
+            status.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
 
     def set_description(self, description: str) -> None:
         self.product_description.configure(state="normal")
@@ -1749,6 +1813,9 @@ class App(ctk.CTk if ctk is not None else object):
             favorites.add(product.product_id)
         self.settings["favorites"] = sorted(favorites)
         save_settings(self.settings)
+        if self.tray_icon is not None:
+            self.stop_tray_icon()
+            self.start_tray_icon()
         self.rebuild_product_cards()
 
     def sync_product_clicked(self) -> None:
@@ -1756,17 +1823,38 @@ class App(ctk.CTk if ctk is not None else object):
         if product is None:
             messagebox.showwarning(APP_NAME, "Choose a WEAO product first.")
             return
-        if self.settings.get("safe_mode") and (not product.update_status or product.detected):
-            messagebox.showwarning(APP_NAME, "Safe mode blocks products WEAO marks outdated or detected.")
-            return
-        if not product.update_status or product.detected:
-            warning = "WEAO does not currently mark this product as compatible with this Roblox build. Sync anyway?"
-            if not messagebox.askyesno(APP_NAME, warning):
-                return
         self.start_install(
             version_from_hash(product.rbx_version),
             f"{product.title} {product.version}",
         )
+
+    def launch_selected_product_clicked(self) -> None:
+        product = self.selected_product()
+        if product is None:
+            messagebox.showwarning(APP_NAME, "Choose a product first.")
+            return
+        target_version = version_from_hash(product.rbx_version)
+        if local_version_hash(self.versions_dir) == target_version.hash:
+            local_dir = find_latest_version_folder(self.versions_dir)
+            if local_dir is not None and (local_dir / ROBLOX_EXE).exists():
+                try:
+                    launch_roblox(local_dir)
+                    self.status_text.set(f"Launched {product.title} from cached {local_dir.name}")
+                    return
+                except VersionManagerError:
+                    pass
+        self.start_install(
+            target_version,
+            f"launch {product.title} {product.version}",
+            launch_after_update=True,
+        )
+
+    def launch_favorite_from_tray(self, product: WEAOProduct) -> None:
+        self.selected_product_id = product.product_id
+        self.settings["selected_product_id"] = product.product_id
+        save_settings(self.settings)
+        self.select_product(product)
+        self.launch_selected_product_clicked()
 
     def apply_clicked(self) -> None:
         version = self.selected_version()
@@ -1775,10 +1863,16 @@ class App(ctk.CTk if ctk is not None else object):
             return
         self.start_install(version, "manual Roblox build")
 
-    def start_install(self, version: RobloxVersion, source_label: str) -> None:
+    def start_install(
+        self,
+        version: RobloxVersion,
+        source_label: str,
+        launch_after_update: bool | None = None,
+    ) -> None:
         if self.busy:
             return
-        launch_after_update = self.launch_after_update.get()
+        if launch_after_update is None:
+            launch_after_update = self.launch_after_update.get()
         self.set_busy(True, f"Preparing {source_label}...")
         self.progress.set(0)
         thread = threading.Thread(
@@ -1798,7 +1892,6 @@ class App(ctk.CTk if ctk is not None else object):
                 progress=lambda value: self.events.put(("progress", value)),
                 preserve_versions=bool(self.settings.get("preserve_versions", True)),
                 retained_versions=int(self.settings.get("retained_versions", DEFAULT_RETAINED_VERSIONS) or DEFAULT_RETAINED_VERSIONS),
-                backup_before_sync=bool(self.settings.get("backup_before_sync", False)),
             )
             shortcut_path = create_desktop_shortcut(final_dir)
             if launch_after_update:
@@ -1821,8 +1914,8 @@ class App(ctk.CTk if ctk is not None else object):
     def open_settings(self) -> None:
         window = ctk.CTkToplevel(self)
         window.title("Settings")
-        window.geometry("590x590")
-        window.minsize(500, 500)
+        window.geometry("590x540")
+        window.minsize(500, 460)
         window.grid_columnconfigure(0, weight=1)
         window.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(window, text="SETTINGS", text_color="#3bea57", anchor="w", font=ctk.CTkFont(size=11, weight="bold")).grid(
@@ -1847,16 +1940,16 @@ class App(ctk.CTk if ctk is not None else object):
         )
 
         auto_var = ctk.BooleanVar(value=bool(self.settings.get("auto_sync", False)))
-        safe_var = ctk.BooleanVar(value=bool(self.settings.get("safe_mode", False)))
+        cache_var = ctk.BooleanVar(value=bool(self.settings.get("auto_cache_favorites", False)))
+        tray_var = ctk.BooleanVar(value=bool(self.settings.get("background_tray", False)))
         preserve_var = ctk.BooleanVar(value=bool(self.settings.get("preserve_versions", True)))
-        backup_var = ctk.BooleanVar(value=bool(self.settings.get("backup_before_sync", False)))
         start_minimized_var = ctk.BooleanVar(value=bool(self.settings.get("start_minimized", False)))
         relaunch_var = ctk.BooleanVar(value=bool(self.settings.get("relaunch_after_auto_sync", False)))
         controls = [
-            ("Auto-sync Roblox on launch", auto_var, "When RobloxPlayerBeta.exe starts, compare it with the selected product and resync if needed."),
-            ("Safe product filter", safe_var, "Hide detected products and only show products WEAO marks updated."),
+            ("Auto-sync current selected product on Roblox launch", auto_var, "When RobloxPlayerBeta.exe starts, compare it with the selected product and resync if needed."),
+            ("Auto-cache favorite products", cache_var, "Keep favorite product builds downloaded in the background for faster hot-swapping. Requires background mode."),
+            ("Run in background tray", tray_var, "Keep RVM available from the Windows notification area with quick favorite-product controls."),
             ("Keep previous Roblox versions", preserve_var, "Retain old version folders so you can switch back without downloading again."),
-            ("Back up before syncing", backup_var, "Copy the active Roblox folder into the app data backup directory before changes."),
             ("Start minimized", start_minimized_var, "Launch the manager hidden. Use the tray/startup shortcut to keep background sync running."),
             ("Relaunch Roblox after auto-sync", relaunch_var, "Start Roblox again after an automatic version correction finishes."),
         ]
@@ -1867,7 +1960,7 @@ class App(ctk.CTk if ctk is not None else object):
             ctk.CTkCheckBox(card, text=label, variable=variable, corner_radius=6, font=ctk.CTkFont(size=12, weight="bold")).grid(
                 row=0, column=0, sticky="w", padx=14, pady=(12, 2)
             )
-        ctk.CTkLabel(card, text=description, anchor="w", wraplength=460, text_color="#8693a1", font=ctk.CTkFont(size=10)).grid(
+            ctk.CTkLabel(card, text=description, anchor="w", wraplength=460, text_color="#8693a1", font=ctk.CTkFont(size=10)).grid(
                 row=1, column=0, sticky="ew", padx=14, pady=(0, 12)
             )
 
@@ -1885,26 +1978,37 @@ class App(ctk.CTk if ctk is not None else object):
             except ValueError:
                 messagebox.showerror(APP_NAME, "Retained versions must be a number from 1 to 20.", parent=window)
                 return
+            if cache_var.get():
+                tray_var.set(True)
             self.settings.update(
                 {
                     "auto_sync": auto_var.get(),
-                    "safe_mode": safe_var.get(),
+                    "auto_cache_favorites": cache_var.get(),
+                    "background_tray": tray_var.get(),
                     "preserve_versions": preserve_var.get(),
-                    "backup_before_sync": backup_var.get(),
                     "start_minimized": start_minimized_var.get(),
                     "relaunch_after_auto_sync": relaunch_var.get(),
                     "retained_versions": retained,
                 }
             )
             save_settings(self.settings)
+            background_enabled = auto_var.get() or cache_var.get() or tray_var.get()
             try:
-                configure_startup_shortcut(auto_var.get())
+                configure_startup_shortcut(background_enabled)
             except Exception as exc:
                 messagebox.showwarning(APP_NAME, str(exc), parent=window)
             if auto_var.get():
                 self.start_auto_sync_monitor()
             else:
                 self.stop_auto_sync_monitor()
+            if cache_var.get():
+                self.start_favorite_cache_monitor()
+            else:
+                self.stop_favorite_cache_monitor()
+            if tray_var.get():
+                self.start_tray_icon()
+            else:
+                self.stop_tray_icon()
             self.rebuild_product_cards()
             window.destroy()
 
@@ -1923,6 +2027,98 @@ class App(ctk.CTk if ctk is not None else object):
     def stop_auto_sync_monitor(self) -> None:
         self.settings["auto_sync"] = False
         self.monitor_stop.set()
+
+    def start_favorite_cache_monitor(self) -> None:
+        self.settings["auto_cache_favorites"] = True
+        self.settings["background_tray"] = True
+        if self.favorite_cache_thread and self.favorite_cache_thread.is_alive():
+            return
+        self.favorite_cache_stop.clear()
+        self.favorite_cache_thread = threading.Thread(target=self.favorite_cache_worker, daemon=True)
+        self.favorite_cache_thread.start()
+
+    def start_tray_icon(self) -> None:
+        if pystray is None or Image is None or self.tray_icon is not None:
+            return
+        icon_path = resource_path(ICON_FILENAME)
+        if icon_path.exists():
+            icon_image = Image.open(icon_path).convert("RGBA")
+        else:
+            icon_image = Image.new("RGBA", (64, 64), (59, 234, 87, 255))
+
+        def show_window(_icon: Any, _item: Any) -> None:
+            self.after(0, self.deiconify)
+
+        def hide_window(_icon: Any, _item: Any) -> None:
+            self.after(0, self.withdraw)
+
+        def exit_app(_icon: Any, _item: Any) -> None:
+            self.after(0, self.on_close)
+
+        favorites = {str(value) for value in self.settings.get("favorites", [])}
+        product_items = []
+        for product in self.products:
+            if product.product_id not in favorites:
+                continue
+            product_items.append(
+                pystray.MenuItem(
+                    product.title,
+                    lambda _icon, _item, item=product: self.after(0, lambda: self.launch_favorite_from_tray(item)),
+                )
+            )
+        favorite_menu = pystray.Menu(*product_items) if product_items else pystray.Menu(
+            pystray.MenuItem("No favorites", None, enabled=False)
+        )
+        menu = pystray.Menu(
+            pystray.MenuItem("Show RVM", show_window),
+            pystray.MenuItem("Hide RVM", hide_window),
+            pystray.MenuItem("Launch favorite", favorite_menu),
+            pystray.MenuItem("Exit", exit_app),
+        )
+        self.tray_icon = pystray.Icon("roblox-version-manager", icon_image, APP_NAME, menu)
+        self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+        self.tray_thread.start()
+
+    def stop_tray_icon(self) -> None:
+        if self.tray_icon is not None:
+            self.tray_icon.stop()
+            self.tray_icon = None
+
+    def stop_favorite_cache_monitor(self) -> None:
+        self.settings["auto_cache_favorites"] = False
+        self.favorite_cache_stop.set()
+
+    def favorite_cache_worker(self) -> None:
+        try:
+            self.cache_favorite_products()
+        except Exception as exc:
+            self.events.put(("status", f"Favorite cache update failed: {exc}"))
+        while not self.favorite_cache_stop.wait(3600):
+            try:
+                products = fetch_weao_products()
+                self.events.put(("products", products))
+                self.cache_favorite_products(products)
+            except Exception as exc:
+                self.events.put(("status", f"Favorite cache update failed: {exc}"))
+
+    def cache_favorite_products(self, products: list[WEAOProduct] | None = None) -> None:
+        favorites = {str(value) for value in self.settings.get("favorites", [])}
+        catalog = products if products is not None else self.products
+        favorite_products = [product for product in catalog if product.product_id in favorites]
+        if not favorite_products:
+            return
+        self.events.put(("status", f"Caching {len(favorite_products)} favorite product build(s)..."))
+        for product in favorite_products:
+            version = version_from_hash(product.rbx_version)
+            with tempfile.TemporaryDirectory(prefix="rvm_cache_stage_") as stage_name:
+                stage_windows_player_deployment(
+                    version,
+                    self.cache_dir,
+                    Path(stage_name),
+                    lambda message: None,
+                    lambda value: None,
+                )
+        self.events.put(("status", "Favorite product cache is up to date."))
 
     def auto_sync_worker(self) -> None:
         was_running = False
@@ -2016,31 +2212,6 @@ class App(ctk.CTk if ctk is not None else object):
         self.status_text.set("Roblox folder changed")
         self.append_log(f"Roblox Versions directory changed: {path}")
 
-    def rollback_clicked(self) -> None:
-        history = load_sync_history()
-        candidates = [item for item in history if item.get("folder")]
-        if not candidates:
-            messagebox.showinfo(APP_NAME, "No saved sync history is available yet.")
-            return
-        options = [f"{item.get('product', 'Manual build')}  /  {item.get('version', '')}" for item in candidates]
-        choice = simpledialog.askinteger(
-            APP_NAME,
-            "Enter the number to restore:\n\n" + "\n".join(f"{index + 1}. {label}" for index, label in enumerate(options[:10])),
-            minvalue=1,
-            maxvalue=min(10, len(options)),
-        )
-        if choice is None:
-            return
-        selected = candidates[choice - 1]
-        target_dir = Path(str(selected["folder"]))
-        try:
-            restored = rollback_to_folder(self.versions_dir, target_dir, self.queue_log)
-            create_desktop_shortcut(restored)
-            self.refresh_local_status()
-            self.status_text.set(f"Rolled back to {restored.name}")
-        except Exception as exc:
-            messagebox.showerror(APP_NAME, str(exc))
-
     def open_history(self) -> None:
         history = load_sync_history()
         window = ctk.CTkToplevel(self)
@@ -2089,7 +2260,7 @@ class App(ctk.CTk if ctk is not None else object):
             self.refresh_versions_button,
             self.refresh_products_button,
             self.sync_product_button,
-            self.rollback_button,
+            self.launch_product_button,
             self.manual_apply_button,
             self.version_menu,
         ):
@@ -2113,6 +2284,9 @@ class App(ctk.CTk if ctk is not None else object):
                 if self.products and payload == self.products:
                     continue
                 self.products = payload
+                if self.tray_icon is not None:
+                    self.stop_tray_icon()
+                    self.start_tray_icon()
                 self.loading_products = False
                 self.product_refresh_started = False
                 self.rebuild_product_cards()
@@ -2180,6 +2354,8 @@ class App(ctk.CTk if ctk is not None else object):
     def on_close(self) -> None:
         try:
             self.monitor_stop.set()
+            self.favorite_cache_stop.set()
+            self.stop_tray_icon()
             self.logger.write("Application closed.")
         finally:
             self.logger.close()
