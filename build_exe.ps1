@@ -8,6 +8,7 @@ if (-not (Test-Path $venvPython)) {
 
 & $venvPython -m pip install --upgrade pip
 & $venvPython -m pip install -r (Join-Path $PSScriptRoot "requirements.txt") pyinstaller
-& $venvPython -m PyInstaller --onefile --noconsole --name "RobloxVersionManager" (Join-Path $PSScriptRoot "app.py")
+$iconPath = Join-Path $PSScriptRoot "rvm.ico"
+& $venvPython -m PyInstaller --clean --onefile --noconsole --icon $iconPath --add-data "$iconPath;." --name "RobloxVersionManager" (Join-Path $PSScriptRoot "app.py")
 
 Write-Host "Built executable: dist\RobloxVersionManager.exe"

@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['C:\\Users\\19169\\Documents\\force versiob\\app.py'],
+    ['C:/Users/user/Documents/GitHub/Roblox-versions-manager/app.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('C:/Users/user/Documents/GitHub/Roblox-versions-manager/rvm.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['C:/Users/user/Documents/GitHub/Roblox-versions-manager/rvm.ico'],
 )
