@@ -43,7 +43,7 @@ The product catalog is loaded from WEAO's public `/api/status/exploits` endpoint
 - Supports favorites, product filters, product sorting by type, sync history, and retained local versions.
 - Can create a Windows Startup shortcut for background auto-sync.
 - Can watch for `RobloxPlayerBeta.exe` launches, compare the selected product build, close Roblox, and resync when needed.
-- Can run as a notification-area tray app with quick favorite-product switching.
+- Can run as a notification-area tray app with quick favorite-product switching without hiding the normal window unless **Start minimized** is enabled.
 - Can hourly cache favorite product builds for faster hot-swapping.
 - Supports a custom application icon in packaged builds.
 - Uses a generated `rvm.ico` icon for the window, taskbar, and File Explorer executable icon.

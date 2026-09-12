@@ -1183,6 +1183,9 @@ class App(ctk.CTk if ctk is not None else object):
         self.settings_window: Any = None
         self.settings_save_button: Any = None
         self.settings_feedback: Any = None
+        self.product_search_after_id: str | None = None
+        self.product_rows: dict[str, tuple[Any, Any, Any]] = {}
+        self.product_empty_label: Any = None
 
         self.build_ui()
         self.refresh_local_status()
@@ -1194,8 +1197,6 @@ class App(ctk.CTk if ctk is not None else object):
         self.refresh_versions()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         if self.settings.get("start_minimized") or BACKGROUND_MODE:
-            self.after(250, self.withdraw)
-        if self.settings.get("background_tray"):
             self.after(250, self.withdraw)
         if self.settings.get("auto_sync"):
             self.start_auto_sync_monitor()
@@ -1310,7 +1311,7 @@ class App(ctk.CTk if ctk is not None else object):
             command=self.refresh_products_clicked,
         )
         self.refresh_products_button.grid(row=0, column=1)
-        self.product_query.trace_add("write", lambda *_: self.rebuild_product_cards())
+        self.product_query.trace_add("write", lambda *_: self.schedule_product_rebuild())
 
         filter_row = ctk.CTkFrame(products_panel, fg_color="transparent")
         filter_row.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 8))
@@ -1709,13 +1710,29 @@ class App(ctk.CTk if ctk is not None else object):
         )
         self.website_button.configure(state="normal" if product.website_url else "disabled")
         self.discord_button.configure(state="normal" if product.discord_url else "disabled")
-        self.rebuild_product_cards()
+        self.update_product_row_selection()
+
+    def schedule_product_rebuild(self) -> None:
+        if self.product_search_after_id is not None:
+            self.after_cancel(self.product_search_after_id)
+        self.product_search_after_id = self.after(120, self.rebuild_product_cards)
+
+    def update_product_row_selection(self) -> None:
+        selected_id = self.selected_product_id
+        for product_id, row_widgets in self.product_rows.items():
+            is_selected = product_id == selected_id
+            card = row_widgets[0]
+            title = row_widgets[1]
+            card.configure(
+                fg_color="#263b2b" if is_selected else "#18212b",
+                border_color="#3bea57" if is_selected else "#202c38",
+            )
+            title.configure(text_color="#f4f7fb" if is_selected else "#edf3f7")
 
     def rebuild_product_cards(self) -> None:
         if not hasattr(self, "products_frame"):
             return
-        for child in self.products_frame.winfo_children():
-            child.destroy()
+        self.product_search_after_id = None
         query = self.product_query.get().strip().lower()
         product_filter = self.product_filter.get() if hasattr(self, "product_filter") else "All products"
         type_filter = self.sort_menu.get() if hasattr(self, "sort_menu") else "All"
@@ -1733,15 +1750,37 @@ class App(ctk.CTk if ctk is not None else object):
         else:
             self.product_count_text.set(f"{len(visible_products)} Windows products")
         if not visible_products:
-            ctk.CTkLabel(
-                self.products_frame,
-                text="No products match your search.",
-                text_color="#7e8b99",
-                anchor="w",
-            ).grid(row=0, column=0, sticky="ew", padx=12, pady=16)
+            for row_widgets in self.product_rows.values():
+                row_widgets[0].grid_remove()
+            if self.product_empty_label is None:
+                self.product_empty_label = ctk.CTkLabel(
+                    self.products_frame,
+                    text="No products match your search.",
+                    text_color="#7e8b99",
+                    anchor="w",
+                )
+            self.product_empty_label.grid(row=0, column=0, sticky="ew", padx=12, pady=16)
             return
+        if self.product_empty_label is not None:
+            self.product_empty_label.grid_remove()
         for index, product in enumerate(visible_products):
             selected = product.product_id == self.selected_product_id
+            existing = self.product_rows.get(product.product_id)
+            if existing is not None:
+                card = existing[0]
+                title = existing[1]
+                favorite_button = existing[2]
+                card.grid(row=index, column=0, sticky="ew", padx=3, pady=(0, 7))
+                card.configure(
+                    fg_color="#263b2b" if selected else "#18212b",
+                    border_color="#3bea57" if selected else "#202c38",
+                )
+                title.configure(text=product.title, text_color="#f4f7fb" if selected else "#edf3f7")
+                favorite_button.configure(
+                    text="★" if product.product_id in favorites else "☆",
+                    text_color="#ffd166" if product.product_id in favorites else "#778493",
+                )
+                continue
             card = ctk.CTkFrame(
                 self.products_frame,
                 height=74,
@@ -1778,6 +1817,7 @@ class App(ctk.CTk if ctk is not None else object):
             )
             title.grid(row=0, column=1, sticky="ew", padx=(7, 4), pady=(8, 0))
             title.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
+            self.product_rows[product.product_id] = (card, title, favorite_button)
             type_label = product_type_label(product)
             subtitle = ctk.CTkLabel(
                 card,
@@ -1799,6 +1839,11 @@ class App(ctk.CTk if ctk is not None else object):
             status.grid(row=0, column=2, rowspan=2, padx=(4, 12))
             status.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
 
+        visible_ids = {product.product_id for product in visible_products}
+        for product_id, row_widgets in self.product_rows.items():
+            if product_id not in visible_ids:
+                row_widgets[0].grid_remove()
+
     def set_description(self, description: str) -> None:
         self.product_description.configure(state="normal")
         self.product_description.delete("1.0", "end")
@@ -1816,17 +1861,17 @@ class App(ctk.CTk if ctk is not None else object):
     def filter_changed(self, value: str) -> None:
         self.settings["product_filter"] = value
         save_settings(self.settings)
-        self.rebuild_product_cards()
+        self.schedule_product_rebuild()
 
     def sort_changed(self, value: str) -> None:
         self.settings["sort_mode"] = value
         save_settings(self.settings)
-        self.rebuild_product_cards()
+        self.schedule_product_rebuild()
 
     def type_filter_changed(self, value: str) -> None:
         self.settings["type_filter"] = value
         save_settings(self.settings)
-        self.rebuild_product_cards()
+        self.schedule_product_rebuild()
 
     def toggle_favorite(self) -> None:
         product = self.selected_product()
@@ -1848,7 +1893,7 @@ class App(ctk.CTk if ctk is not None else object):
                 text="★" if product.product_id in favorites else "☆",
                 text_color="#ffd166" if product.product_id in favorites else "#c5d0db",
             )
-        self.rebuild_product_cards()
+        self.schedule_product_rebuild()
 
     def sync_product_clicked(self) -> None:
         product = self.selected_product()
