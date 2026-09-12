@@ -39,7 +39,6 @@ except ModuleNotFoundError:
     pystray = None
     Image = None
 
-
 APP_NAME = "Roblox Version Manager"
 RBXCDN_HOST = "https://setup-aws.rbxcdn.com"
 DEPLOY_HISTORY_URL = "https://setup-rbxcdn.github.io/DeployHistory.txt"
@@ -185,11 +184,9 @@ def product_sort_key(product: WEAOProduct, sort_mode: str) -> tuple[Any, ...]:
 
 def product_type_label(product: WEAOProduct) -> str:
     raw_type = product.extype.casefold()
-    if "external" in raw_type:
-        return "External"
     if "executor" in raw_type:
         return "Executor"
-    return product.extype or "Product"
+    return "External"
 
 
 def normalize_version_hash(value: str) -> str:
@@ -1182,6 +1179,9 @@ class App(ctk.CTk if ctk is not None else object):
         self.favorite_cache_stop = threading.Event()
         self.tray_icon: Any = None
         self.tray_thread: threading.Thread | None = None
+        self.settings_window: Any = None
+        self.settings_save_button: Any = None
+        self.settings_feedback: Any = None
 
         self.build_ui()
         self.refresh_local_status()
@@ -1201,6 +1201,8 @@ class App(ctk.CTk if ctk is not None else object):
         if self.settings.get("auto_cache_favorites"):
             self.start_favorite_cache_monitor()
         if self.settings.get("background_tray") or BACKGROUND_MODE:
+            self.start_tray_icon()
+        elif self.settings.get("auto_cache_favorites"):
             self.start_tray_icon()
         if self.settings.get("auto_sync") and BACKGROUND_MODE:
             self.status_text.set("Background auto-sync active")
@@ -1399,14 +1401,14 @@ class App(ctk.CTk if ctk is not None else object):
         self.discord_button.grid(row=0, column=2, padx=4)
         self.favorite_button = ctk.CTkButton(
             title_row,
-            text="Fav",
+            text="☆",
             command=self.toggle_favorite,
-            width=43,
-            height=23,
+            width=30,
+            height=25,
             corner_radius=7,
             fg_color="#27313d",
             hover_color="#344252",
-            font=ctk.CTkFont(size=10),
+            font=ctk.CTkFont(size=16, weight="bold"),
         )
         self.favorite_button.grid(row=0, column=3, padx=(4, 0))
         ctk.CTkLabel(
@@ -1700,7 +1702,10 @@ class App(ctk.CTk if ctk is not None else object):
         self.product_features_text.set(f"FEATURES\n{feature_text}")
         self.set_description(product.description)
         favorites = {str(value) for value in self.settings.get("favorites", [])}
-        self.favorite_button.configure(text="Unfavorite" if product.product_id in favorites else "Favorite")
+        self.favorite_button.configure(
+            text="★" if product.product_id in favorites else "☆",
+            text_color="#ffd166" if product.product_id in favorites else "#c5d0db",
+        )
         self.website_button.configure(state="normal" if product.website_url else "disabled")
         self.discord_button.configure(state="normal" if product.discord_url else "disabled")
         self.rebuild_product_cards()
@@ -1734,7 +1739,6 @@ class App(ctk.CTk if ctk is not None else object):
             return
         for index, product in enumerate(visible_products):
             selected = product.product_id == self.selected_product_id
-            favorite_marker = " *" if product.product_id in favorites else ""
             card = ctk.CTkFrame(
                 self.products_frame,
                 height=74,
@@ -1745,17 +1749,31 @@ class App(ctk.CTk if ctk is not None else object):
             )
             card.grid(row=index, column=0, sticky="ew", padx=3, pady=(0, 7))
             card.grid_propagate(False)
-            card.grid_columnconfigure(0, weight=1)
-            card.grid_columnconfigure(1, weight=0)
+            card.grid_columnconfigure(0, weight=0)
+            card.grid_columnconfigure(1, weight=1)
+            card.grid_columnconfigure(2, weight=0)
             card.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
+            favorite_button = ctk.CTkButton(
+                card,
+                text="★" if product.product_id in favorites else "☆",
+                command=lambda item=product: self.toggle_product_favorite(item),
+                width=30,
+                height=30,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#263442",
+                text_color="#ffd166" if product.product_id in favorites else "#778493",
+                font=ctk.CTkFont(size=17, weight="bold"),
+            )
+            favorite_button.grid(row=0, column=0, rowspan=2, padx=(5, 2), pady=5)
             title = ctk.CTkLabel(
                 card,
-                text=f"{product.title}{favorite_marker}",
+                text=product.title,
                 anchor="w",
                 text_color="#edf3f7",
                 font=ctk.CTkFont(size=12, weight="bold"),
             )
-            title.grid(row=0, column=0, sticky="ew", padx=(12, 4), pady=(8, 0))
+            title.grid(row=0, column=1, sticky="ew", padx=(7, 4), pady=(8, 0))
             title.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
             type_label = product_type_label(product)
             subtitle = ctk.CTkLabel(
@@ -1765,7 +1783,7 @@ class App(ctk.CTk if ctk is not None else object):
                 text_color="#8f9baa",
                 font=ctk.CTkFont(size=10),
             )
-            subtitle.grid(row=1, column=0, sticky="ew", padx=(12, 4), pady=(0, 8))
+            subtitle.grid(row=1, column=1, sticky="ew", padx=(7, 4), pady=(0, 8))
             subtitle.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
             status = ctk.CTkLabel(
                 card,
@@ -1775,7 +1793,7 @@ class App(ctk.CTk if ctk is not None else object):
                 anchor="e",
                 font=ctk.CTkFont(size=9, weight="bold"),
             )
-            status.grid(row=0, column=1, rowspan=2, padx=(4, 12))
+            status.grid(row=0, column=2, rowspan=2, padx=(4, 12))
             status.bind("<Button-1>", lambda _event, item=product: self.select_product(item))
 
     def set_description(self, description: str) -> None:
@@ -1806,6 +1824,9 @@ class App(ctk.CTk if ctk is not None else object):
         product = self.selected_product()
         if product is None:
             return
+        self.toggle_product_favorite(product)
+
+    def toggle_product_favorite(self, product: WEAOProduct) -> None:
         favorites = {str(value) for value in self.settings.get("favorites", [])}
         if product.product_id in favorites:
             favorites.remove(product.product_id)
@@ -1813,9 +1834,12 @@ class App(ctk.CTk if ctk is not None else object):
             favorites.add(product.product_id)
         self.settings["favorites"] = sorted(favorites)
         save_settings(self.settings)
-        if self.tray_icon is not None:
-            self.stop_tray_icon()
-            self.start_tray_icon()
+        self.refresh_tray_menu()
+        if product.product_id == self.selected_product_id:
+            self.favorite_button.configure(
+                text="★" if product.product_id in favorites else "☆",
+                text_color="#ffd166" if product.product_id in favorites else "#c5d0db",
+            )
         self.rebuild_product_cards()
 
     def sync_product_clicked(self) -> None:
@@ -1912,10 +1936,21 @@ class App(ctk.CTk if ctk is not None else object):
             messagebox.showerror(APP_NAME, str(exc))
 
     def open_settings(self) -> None:
+        if self.settings_window is not None and self.settings_window.winfo_exists():
+            self.settings_window.deiconify()
+            self.settings_window.lift()
+            self.settings_window.focus_force()
+            return
         window = ctk.CTkToplevel(self)
+        self.settings_window = window
         window.title("Settings")
         window.geometry("590x540")
         window.minsize(500, 460)
+        window.transient(self)
+        window.attributes("-topmost", True)
+        window.grab_set()
+        window.lift()
+        window.focus_force()
         window.grid_columnconfigure(0, weight=1)
         window.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(window, text="SETTINGS", text_color="#3bea57", anchor="w", font=ctk.CTkFont(size=11, weight="bold")).grid(
@@ -2010,11 +2045,27 @@ class App(ctk.CTk if ctk is not None else object):
             else:
                 self.stop_tray_icon()
             self.rebuild_product_cards()
+            self.settings_feedback.configure(text="Settings saved", text_color="#3bea57")
+            self.settings_save_button.configure(text="Saved")
+            window.after(900, lambda: self.settings_feedback.configure(text=""))
+            window.after(1200, lambda: self.settings_save_button.configure(text="Save settings"))
+
+        self.settings_feedback = ctk.CTkLabel(window, text="", text_color="#7f8d9d", anchor="e", font=ctk.CTkFont(size=10))
+        self.settings_feedback.grid(row=2, column=0, sticky="e", padx=24, pady=(10, 0))
+        self.settings_save_button = ctk.CTkButton(window, text="Save settings", command=save_and_close, height=40, corner_radius=10)
+        self.settings_save_button.grid(
+            row=3, column=0, sticky="ew", padx=24, pady=(6, 22)
+        )
+
+        def close_settings() -> None:
+            try:
+                window.grab_release()
+            except Exception:
+                pass
+            self.settings_window = None
             window.destroy()
 
-        ctk.CTkButton(window, text="Save settings", command=save_and_close, height=40, corner_radius=10).grid(
-            row=2, column=0, sticky="ew", padx=24, pady=(10, 22)
-        )
+        window.protocol("WM_DELETE_WINDOW", close_settings)
 
     def start_auto_sync_monitor(self) -> None:
         self.settings["auto_sync"] = True
@@ -2046,8 +2097,22 @@ class App(ctk.CTk if ctk is not None else object):
         else:
             icon_image = Image.new("RGBA", (64, 64), (59, 234, 87, 255))
 
+        menu = self.build_tray_menu()
+        self.tray_icon = pystray.Icon("roblox-version-manager", icon_image, APP_NAME, menu)
+
+        try:
+            self.tray_icon.run_detached(setup=lambda icon: setattr(icon, "visible", True))
+            self.status_text.set("System tray active")
+        except Exception as exc:
+            self.tray_icon = None
+            self.events.put(("status", f"System tray unavailable: {exc}"))
+
+    def build_tray_menu(self) -> Any:
+        if pystray is None:
+            return None
+
         def show_window(_icon: Any, _item: Any) -> None:
-            self.after(0, self.deiconify)
+            self.after(0, self.show_main_window)
 
         def hide_window(_icon: Any, _item: Any) -> None:
             self.after(0, self.withdraw)
@@ -2055,34 +2120,42 @@ class App(ctk.CTk if ctk is not None else object):
         def exit_app(_icon: Any, _item: Any) -> None:
             self.after(0, self.on_close)
 
+        def favorite_action(product: WEAOProduct) -> Callable[[Any, Any], None]:
+            def launch(_icon: Any, _item: Any) -> None:
+                self.after(0, lambda: self.launch_favorite_from_tray(product))
+
+            return launch
+
         favorites = {str(value) for value in self.settings.get("favorites", [])}
-        product_items = []
-        for product in self.products:
-            if product.product_id not in favorites:
-                continue
-            product_items.append(
-                pystray.MenuItem(
-                    product.title,
-                    lambda _icon, _item, item=product: self.after(0, lambda: self.launch_favorite_from_tray(item)),
-                )
-            )
+        product_items = [
+            pystray.MenuItem(product.title, favorite_action(product))
+            for product in self.products
+            if product.product_id in favorites
+        ]
         favorite_menu = pystray.Menu(*product_items) if product_items else pystray.Menu(
             pystray.MenuItem("No favorites", None, enabled=False)
         )
-        menu = pystray.Menu(
+        return pystray.Menu(
             pystray.MenuItem("Show RVM", show_window),
             pystray.MenuItem("Hide RVM", hide_window),
             pystray.MenuItem("Launch favorite", favorite_menu),
             pystray.MenuItem("Exit", exit_app),
         )
-        self.tray_icon = pystray.Icon("roblox-version-manager", icon_image, APP_NAME, menu)
-        self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
-        self.tray_thread.start()
+
+    def show_main_window(self) -> None:
+        self.deiconify()
+        self.lift()
+        self.focus_force()
 
     def stop_tray_icon(self) -> None:
         if self.tray_icon is not None:
             self.tray_icon.stop()
             self.tray_icon = None
+            self.status_text.set("System tray stopped")
+
+    def refresh_tray_menu(self) -> None:
+        if self.tray_icon is not None:
+            self.tray_icon.menu = self.build_tray_menu()
 
     def stop_favorite_cache_monitor(self) -> None:
         self.settings["auto_cache_favorites"] = False
@@ -2284,9 +2357,7 @@ class App(ctk.CTk if ctk is not None else object):
                 if self.products and payload == self.products:
                     continue
                 self.products = payload
-                if self.tray_icon is not None:
-                    self.stop_tray_icon()
-                    self.start_tray_icon()
+                self.refresh_tray_menu()
                 self.loading_products = False
                 self.product_refresh_started = False
                 self.rebuild_product_cards()

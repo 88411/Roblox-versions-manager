@@ -15,6 +15,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 $newExe = Join-Path $PSScriptRoot "dist-new\RobloxVersionManager.exe"
 $readyExe = Join-Path $PSScriptRoot "dist\RobloxVersionManager-new.exe"
-Copy-Item -LiteralPath $newExe -Destination $readyExe -Force
+try {
+    Copy-Item -LiteralPath $newExe -Destination $readyExe -Force
+} catch {
+    throw "Could not update dist\RobloxVersionManager-new.exe. Close the old test executable and run the build again."
+}
 
 Write-Host "Built executable: dist\RobloxVersionManager-new.exe"
