@@ -118,6 +118,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "selected_product_id": "",
     "sort_mode": "Type",
     "product_filter": "All products",
+    "type_filter": "All",
     "auto_cache_favorites": False,
 }
 
@@ -185,7 +186,7 @@ def product_sort_key(product: WEAOProduct, sort_mode: str) -> tuple[Any, ...]:
 def product_type_label(product: WEAOProduct) -> str:
     raw_type = product.extype.casefold()
     if "executor" in raw_type:
-        return "Executor"
+        return "Executer"
     return "External"
 
 
@@ -1330,16 +1331,16 @@ class App(ctk.CTk if ctk is not None else object):
         self.product_filter.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.sort_menu = ctk.CTkOptionMenu(
             filter_row,
-            values=["Type", "Updated", "sUNC"],
-            command=lambda value: self.sort_changed(value),
+            values=["All", "Executer", "External"],
+            command=lambda value: self.type_filter_changed(value),
             height=30,
             corner_radius=8,
             dynamic_resizing=False,
         )
-        sort_value = str(self.settings.get("sort_mode") or "Type")
-        if sort_value not in {"Type", "Updated", "sUNC"}:
-            sort_value = "Type"
-        self.sort_menu.set(sort_value)
+        type_filter_value = str(self.settings.get("type_filter") or "All")
+        if type_filter_value not in {"All", "Executer", "External"}:
+            type_filter_value = "All"
+        self.sort_menu.set(type_filter_value)
         self.sort_menu.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         self.products_frame = ctk.CTkScrollableFrame(
@@ -1717,14 +1718,16 @@ class App(ctk.CTk if ctk is not None else object):
             child.destroy()
         query = self.product_query.get().strip().lower()
         product_filter = self.product_filter.get() if hasattr(self, "product_filter") else "All products"
+        type_filter = self.sort_menu.get() if hasattr(self, "sort_menu") else "All"
         favorites = {str(value) for value in self.settings.get("favorites", [])}
         visible_products = [
             product
             for product in self.products
             if (not query or query in product.title.lower() or query in product.version.lower())
             and (product_filter != "Favorites only" or product.product_id in favorites)
+            and (type_filter == "All" or product_type_label(product) == type_filter)
         ]
-        visible_products.sort(key=lambda product: product_sort_key(product, str(self.settings.get("sort_mode") or "Type")))
+        visible_products.sort(key=lambda product: product_sort_key(product, "Type"))
         if self.loading_products and not self.products:
             self.product_count_text.set("Loading WEAO products...")
         else:
@@ -1817,6 +1820,11 @@ class App(ctk.CTk if ctk is not None else object):
 
     def sort_changed(self, value: str) -> None:
         self.settings["sort_mode"] = value
+        save_settings(self.settings)
+        self.rebuild_product_cards()
+
+    def type_filter_changed(self, value: str) -> None:
+        self.settings["type_filter"] = value
         save_settings(self.settings)
         self.rebuild_product_cards()
 
